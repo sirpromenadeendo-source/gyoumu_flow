@@ -1,0 +1,800 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>調査案件フローボード</title>
+<style>
+/* 横=時系列。案件一覧は8段階のガント、案件内はカードのボード。
+   配色は調査図面の製図インクと土層の色味。課の色だけを彩度のある要素として使う。 */
+:root{
+  --bg:#f1f0ed; --panel:#fff; --panel-2:#f8f7f4; --panel-3:#edece8;
+  --ink:#1b1c1e; --ink-2:#55575c; --ink-3:#8b8d93;
+  --rule:#e0dfda; --rule-2:#ecebe7;
+  --accent:#8a2e3f; --accent-bg:#f9eff1;
+  --eigyo:#1f6373; --genba:#7a5522; --seiri:#3f4f82; --zuka:#5f4585; --soku:#41693a;
+  --ok:#2f6b39; --ok-bg:#e9f1e8; --go:#946512; --go-bg:#f7f0dd; --stop:#a24a25; --stop-bg:#f8ebe3;
+  --sans:"Noto Sans JP","Hiragino Kaku Gothic ProN","Yu Gothic","Meiryo",system-ui,sans-serif;
+  --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  --r:10px; --r-s:7px;
+}
+@media (prefers-color-scheme:dark){ :root:not([data-theme="light"]){
+  --bg:#121315; --panel:#1c1e21; --panel-2:#17191b; --panel-3:#23262a;
+  --ink:#e9e9e7; --ink-2:#a3a5aa; --ink-3:#74777d;
+  --rule:#2d3034; --rule-2:#232629;
+  --accent:#e08a99; --accent-bg:#2a1e21;
+  --eigyo:#6cb6c6; --genba:#c9a468; --seiri:#93a3dd; --zuka:#b69ae0; --soku:#8dc07f;
+  --ok:#78bf7b; --ok-bg:#1d2a1e; --go:#dcae56; --go-bg:#2b2517; --stop:#e08a63; --stop-bg:#2c1e17;
+  color-scheme:dark;} }
+:root[data-theme="dark"]{
+  --bg:#121315; --panel:#1c1e21; --panel-2:#17191b; --panel-3:#23262a;
+  --ink:#e9e9e7; --ink-2:#a3a5aa; --ink-3:#74777d;
+  --rule:#2d3034; --rule-2:#232629;
+  --accent:#e08a99; --accent-bg:#2a1e21;
+  --eigyo:#6cb6c6; --genba:#c9a468; --seiri:#93a3dd; --zuka:#b69ae0; --soku:#8dc07f;
+  --ok:#78bf7b; --ok-bg:#1d2a1e; --go:#dcae56; --go-bg:#2b2517; --stop:#e08a63; --stop-bg:#2c1e17;
+  color-scheme:dark;}
+
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+html,body{height:100%}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--sans);
+  font-size:13.5px;line-height:1.6;-webkit-font-smoothing:antialiased;
+  font-feature-settings:"palt" 1}
+button,input,select{font:inherit;color:inherit}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:4px}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+
+.wrap{display:flex;flex-direction:column;min-height:100%}
+.pad{padding-inline:20px}
+@media(max-width:560px){.pad{padding-inline:16px}}
+
+/* ---------- header ---------- */
+header{position:sticky;top:env(safe-area-inset-top,0px);z-index:20;background:var(--panel);
+  border-bottom:1px solid var(--rule)}
+.hrow{display:flex;flex-wrap:wrap;gap:10px 20px;align-items:center;padding-block:12px}
+.brand{display:flex;flex-direction:column;gap:1px;white-space:nowrap}
+.brand strong{font-size:16px;font-weight:700;letter-spacing:.01em}
+.brand span{font-size:10px;color:var(--ink-3);letter-spacing:.14em}
+.grow{flex:1 1 auto;min-width:0;display:flex;gap:8px;align-items:center}
+
+select.case{flex:1 1 auto;min-width:0;background:var(--panel-2);border:1px solid var(--rule);
+  border-radius:var(--r-s);padding:7px 10px;font-weight:500;font-size:13px}
+.btn{background:var(--panel-2);border:1px solid var(--rule);border-radius:var(--r-s);
+  padding:7px 12px;cursor:pointer;font-size:12.5px;white-space:nowrap;transition:background .12s,border-color .12s}
+.btn:hover{background:var(--panel-3);border-color:var(--ink-3)}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+.btn.primary:hover{filter:brightness(1.1)}
+.btn.danger{color:var(--accent)}
+.btn[disabled]{opacity:.4;cursor:not-allowed}
+.tools{display:flex;gap:6px;flex-wrap:wrap;margin-left:auto}
+
+.meter{display:flex;align-items:center;gap:10px;min-width:200px}
+.bar{position:relative;flex:1 1 auto;height:6px;border-radius:99px;background:var(--panel-3);overflow:hidden}
+.bar>i{position:absolute;inset:0 auto 0 0;background:var(--ok);border-radius:99px;transition:width .25s}
+.pct{font-family:var(--mono);font-size:14px;font-variant-numeric:tabular-nums;letter-spacing:-.01em}
+.cnt{font-size:11px;color:var(--ink-3);font-family:var(--mono)}
+
+/* ---------- case bar ---------- */
+.casebar{background:var(--panel-2);border-bottom:1px solid var(--rule);padding-block:11px}
+.fields{display:flex;flex-wrap:wrap;gap:9px 16px;align-items:center}
+.f{display:flex;align-items:center;gap:7px;min-width:0}
+.f label{font-size:10.5px;color:var(--ink-3);letter-spacing:.06em;white-space:nowrap}
+.f input,.defs .d input{background:var(--panel);border:1px solid var(--rule);border-radius:var(--r-s);
+  padding:5px 9px;font-size:12.5px;min-width:0;transition:border-color .12s}
+.f input{width:180px}
+.f input.wide{width:270px}
+.f input:hover,.defs .d input:hover{border-color:var(--ink-3)}
+.chips{display:flex;flex-wrap:wrap;gap:5px;align-items:center;margin-left:auto}
+.chip{border:1px solid var(--rule);background:var(--panel);border-radius:99px;padding:3px 11px;
+  font-size:11px;cursor:pointer;color:var(--ink-2);transition:all .12s}
+.chip:hover{border-color:var(--ink-3)}
+.chip[aria-pressed="true"]{background:var(--ink);color:var(--bg);border-color:var(--ink)}
+
+.defs{display:flex;flex-wrap:wrap;gap:9px 14px;align-items:center;margin-top:10px;padding-top:10px;
+  border-top:1px solid var(--rule-2)}
+.defs .lbl{font-size:10.5px;color:var(--ink-3);white-space:nowrap;letter-spacing:.06em}
+.defs .d{display:flex;align-items:center;gap:6px}
+.defs .d span{font-size:10.5px;font-weight:700;white-space:nowrap;letter-spacing:.04em}
+.defs .d input{width:112px}
+.defs .hint{font-size:10.5px;color:var(--ink-3);line-height:1.5}
+
+/* ---------- board ---------- */
+.board{flex:1 1 auto;overflow-x:auto;padding:20px;padding-bottom:36px}
+.track{display:flex;gap:14px;align-items:flex-start;min-width:min-content}
+.col{flex:0 0 244px;display:flex;flex-direction:column;gap:10px}
+.cards{display:grid;grid-template-columns:1fr;gap:10px;align-items:start}
+.col.wide{flex:0 0 502px}
+.col.wide .cards{grid-template-columns:1fr 1fr}
+.colhead{background:var(--panel);border:1px solid var(--rule);border-radius:var(--r);
+  padding:10px 12px 11px;position:sticky;top:0;z-index:2}
+.colhead .n{font-family:var(--mono);font-size:10.5px;color:var(--ink-3);letter-spacing:.08em}
+.colhead b{display:block;font-size:13.5px;font-weight:700;margin-top:1px;letter-spacing:.01em}
+.colhead .cbar{margin-top:8px;height:3px;border-radius:99px;background:var(--panel-3);overflow:hidden;position:relative}
+.colhead .cbar>i{position:absolute;inset:0 auto 0 0;background:var(--ok);border-radius:99px;transition:width .25s}
+.colhead .cn{float:right;font-family:var(--mono);font-size:10.5px;color:var(--ink-3)}
+
+.card{background:var(--panel);border:1px solid var(--rule);border-left:3px solid var(--lane,var(--rule));
+  border-radius:var(--r);padding:11px 12px 12px;transition:border-color .12s}
+.card:hover{border-color:var(--ink-3);border-left-color:var(--lane,var(--ink-3))}
+.card.lane-eigyo{--lane:var(--eigyo)} .card.lane-genba{--lane:var(--genba)}
+.card.lane-seiri{--lane:var(--seiri)} .card.lane-zuka{--lane:var(--zuka)}
+.card.lane-soku{--lane:var(--soku)} .card.lane-all{--lane:var(--accent)}
+.card.star{background:var(--accent-bg)}
+.card.s-done{--lane:var(--ok)} .card.s-doing{--lane:var(--go)} .card.s-hold{--lane:var(--stop)}
+.card.s-na{opacity:.4;--lane:var(--rule)}
+.card.s-na .ttl{text-decoration:line-through;text-decoration-thickness:1px}
+.lane{display:inline-block;font-size:9.5px;font-weight:700;color:var(--lane);letter-spacing:.14em;
+  margin-bottom:3px}
+.ttl{font-size:13.5px;font-weight:700;line-height:1.5;letter-spacing:.005em}
+.card.star .ttl{color:var(--accent)}
+.det{font-size:11px;color:var(--ink-2);line-height:1.65;margin-top:5px}
+.row{display:flex;margin-top:10px}
+.row input{flex:1 1 auto;min-width:0;background:var(--panel-2);border:1px solid transparent;
+  border-radius:var(--r-s);padding:6px 9px;font-size:12px;transition:border-color .12s,background .12s}
+.row input:hover{border-color:var(--rule)}
+.row input:focus{background:var(--panel);border-color:var(--accent)}
+.row input::placeholder{color:var(--ink-3)}
+
+.seg{display:grid;grid-template-columns:repeat(5,1fr);margin-top:8px;border:1px solid var(--rule);
+  border-radius:var(--r-s);overflow:hidden;background:var(--panel-2)}
+.seg button{border:0;border-left:1px solid var(--rule);background:transparent;padding:5px 0;
+  font-size:10.5px;cursor:pointer;color:var(--ink-3);letter-spacing:-.02em;transition:background .12s,color .12s}
+.seg button:first-child{border-left:0}
+.seg button:hover{background:var(--panel-3);color:var(--ink-2)}
+.seg button[aria-pressed="true"]{font-weight:700}
+.seg button[data-s="未着手"][aria-pressed="true"]{background:var(--panel-3);color:var(--ink)}
+.seg button[data-s="着手"][aria-pressed="true"]{background:var(--go-bg);color:var(--go)}
+.seg button[data-s="完了"][aria-pressed="true"]{background:var(--ok-bg);color:var(--ok)}
+.seg button[data-s="保留"][aria-pressed="true"]{background:var(--stop-bg);color:var(--stop)}
+.seg button[data-s="—"][aria-pressed="true"]{background:var(--panel-3);color:var(--ink-2)}
+.stamp{font-size:10px;color:var(--ink-3);font-family:var(--mono);margin-top:7px}
+
+/* ---------- 案件一覧（ガント） ---------- */
+.sum{display:flex;flex-wrap:wrap;gap:6px 24px;padding:12px 20px;border-bottom:1px solid var(--rule);
+  background:var(--panel-2);font-size:12px;color:var(--ink-3);align-items:center}
+#sumText{display:flex;flex-wrap:wrap;gap:6px 24px;align-items:baseline}
+.sum b{font-family:var(--mono);font-size:17px;color:var(--ink);font-variant-numeric:tabular-nums;
+  margin-left:3px;letter-spacing:-.01em}
+.list{padding:18px 20px 44px;overflow-x:auto}
+.gwrap{min-width:1020px;background:var(--panel);border:1px solid var(--rule);border-radius:var(--r);
+  padding:4px 0 0}
+.ghead,.gline{display:grid;grid-template-columns:250px repeat(8,1fr) 104px;align-items:stretch}
+.ghead{padding:9px 6px 10px;border-bottom:1px solid var(--rule)}
+.ghead>div{padding:0 5px;text-align:center;font-size:10px;color:var(--ink-3);line-height:1.35;
+  border-left:1px solid var(--rule-2)}
+.ghead>div:first-child{border-left:0;text-align:left;padding-left:14px;letter-spacing:.06em}
+.ghead>div:last-child{border-left:0;text-align:right;padding-right:14px;letter-spacing:.06em}
+.ghead em{display:block;font-style:normal;font-family:var(--mono);font-size:11px;color:var(--ink-2);
+  margin-bottom:1px}
+.gline{background:transparent;border:0;border-top:1px solid var(--rule-2);cursor:pointer;
+  text-align:left;font:inherit;color:inherit;width:100%;padding:0;transition:background .12s}
+.gline:first-of-type{border-top:0}
+.gline:hover{background:var(--panel-2)}
+.gname{padding:12px 14px;display:flex;flex-direction:column;gap:3px;justify-content:center;min-width:0}
+.gname b{font-size:13.5px;line-height:1.45;overflow-wrap:anywhere;letter-spacing:.005em}
+.gname span{font-size:10.5px;color:var(--ink-3);overflow-wrap:anywhere;line-height:1.5}
+.gcell{position:relative;margin:13px 3px;border-radius:4px;background:var(--panel-3);height:26px}
+.gcell>i{position:absolute;inset:0 auto 0 0;background:var(--ok);border-radius:4px;opacity:.85}
+.gcell>u{position:absolute;inset:0;display:grid;place-items:center;text-decoration:none;
+  font-family:var(--mono);font-size:10px;color:var(--ink-3);font-variant-numeric:tabular-nums}
+.gcell.full>i{opacity:1}
+.gcell.full>u{color:var(--bg)}
+.gcell.na{background:repeating-linear-gradient(45deg,var(--panel-3) 0 3px,transparent 3px 6px)}
+.gcell.cur{box-shadow:0 0 0 1.5px var(--accent)}
+.gpct{padding:12px 14px;display:flex;flex-direction:column;align-items:flex-end;justify-content:center;gap:1px}
+.gpct b{font-family:var(--mono);font-size:15px;font-variant-numeric:tabular-nums;letter-spacing:-.02em}
+.gpct span{font-size:10px;color:var(--ink-3);font-family:var(--mono)}
+.glegend{display:flex;flex-wrap:wrap;gap:6px 18px;align-items:center;font-size:10.5px;color:var(--ink-3);
+  padding:12px 14px;border-top:1px solid var(--rule-2)}
+.glegend i{display:inline-block;width:20px;height:8px;border-radius:2px;vertical-align:-1px;margin-right:5px}
+.emptyList{padding:52px 14px;text-align:center;color:var(--ink-3);font-size:12.5px}
+.emptyList b{display:block;color:var(--ink);font-size:15px;margin-bottom:6px}
+
+/* ---------- misc ---------- */
+.sheet{position:fixed;inset:0;z-index:40;background:rgba(20,20,22,.45);display:grid;place-items:center;padding:16px}
+.sheet .box{background:var(--panel);border:1px solid var(--rule);border-radius:14px;padding:20px;
+  width:min(420px,100%);box-shadow:0 24px 60px rgba(0,0,0,.25)}
+.sheet h2{margin:0 0 4px;font-size:16px;letter-spacing:.01em}
+.sheet p{margin:0 0 16px;font-size:12px;color:var(--ink-3);line-height:1.6}
+.sheet label{display:block;font-size:10.5px;color:var(--ink-3);margin-bottom:4px;letter-spacing:.06em}
+.sheet input{width:100%;background:var(--panel-2);border:1px solid var(--rule);border-radius:var(--r-s);
+  padding:9px 11px;margin-bottom:12px;font-size:13px}
+.sheet .acts{display:flex;gap:8px;justify-content:flex-end;margin-top:8px}
+.toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:var(--ink);color:var(--bg);
+  padding:9px 18px;border-radius:99px;font-size:12.5px;z-index:50;box-shadow:0 10px 30px rgba(0,0,0,.25)}
+.banner{padding:10px 20px;font-size:12px;border-bottom:1px solid var(--rule);background:var(--go-bg);color:var(--ink)}
+.empty{padding:56px 16px;text-align:center;color:var(--ink-3);flex:1}
+.empty b{display:block;color:var(--ink);font-size:15px;margin-bottom:6px}
+footer{padding:16px 20px 28px;font-size:10.5px;color:var(--ink-3);border-top:1px solid var(--rule-2);line-height:1.7}
+footer b{color:var(--ink-2)}
+
+@media (max-width:560px){
+  .col,.col.wide{flex:0 0 82vw}
+  .col.wide .cards{grid-template-columns:1fr}
+  .f input,.f input.wide,.defs .d input{width:100%}
+  .f{flex:1 1 170px}
+  .chips{margin-left:0}
+  .board{padding:16px}
+  .list{padding:16px}
+}
+
+@media print{
+  header,.chips,.defs,.seg,.sheet,.toast,footer,.tools,.glegend{display:none!important}
+  body{background:#fff}
+  .board{overflow:visible;padding:0}
+  .track{flex-wrap:wrap}
+  .col,.col.wide{flex:0 0 19%}
+  .col.wide .cards{grid-template-columns:1fr}
+  .card{break-inside:avoid}
+  .list{overflow:visible;padding:0}
+  .gwrap{min-width:0}
+  @page{size:A3 landscape;margin:8mm}
+}
+.step-fields{margin-top:8px;display:grid;gap:7px}
+.step-fields label{display:grid;gap:3px;font-size:10px;color:var(--ink-3);letter-spacing:.04em}
+.step-fields>label:first-child{grid-template-columns:auto 1fr;align-items:center;gap:8px}
+.step-fields input,.step-fields textarea{width:100%;min-width:0;font:inherit;font-size:11.5px;color:var(--ink);background:var(--panel-2);border:1px solid var(--rule);border-radius:5px;padding:4px 7px}
+.step-fields textarea{resize:vertical;min-height:60px}.step-fields summary{cursor:pointer;font-size:10.5px;font-weight:700;color:var(--ink-2)}.step-fields details[open] summary{margin-bottom:8px}
+.notice{font-size:11px;color:var(--stop);margin-top:6px}
+.notice:empty{display:none}.gname .notice{color:var(--stop)}
+@media print{.step-fields details>*{display:block!important}.step-fields textarea{min-height:90px}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="pad hrow">
+      <div class="brand"><strong>調査案件フローボード</strong><span>埋蔵文化財調査　業務一貫フロー</span></div>
+      <div class="grow">
+        <button class="btn" id="toList" hidden>← 案件一覧</button>
+        <select class="case" id="caseSel" aria-label="案件を選ぶ"></select>
+        <button class="btn" id="newCase">＋ 案件</button>
+        <button class="btn danger" id="delCase" title="この案件を削除">削除</button>
+      </div>
+      <div class="meter" id="meter">
+        <div class="bar"><i id="bar" style="width:0%"></i></div>
+        <div class="pct" id="pct">0%</div>
+        <div class="cnt" id="cnt">0 / 0</div>
+      </div>
+      <div class="tools">
+        <button class="btn" id="expJson">書き出し</button>
+        <button class="btn" id="impJson">読み込み</button>
+        <button class="btn" id="restoreBackup">置換前に戻す</button>
+        <button class="btn" id="expCsv">CSV</button>
+        <button class="btn" id="doPrint">印刷</button>
+      </div>
+    </div>
+  </header>
+
+  <div class="banner" id="saveStatus" role="status" aria-live="polite">保存状態を確認中…</div>
+  <div class="sum" id="sum" hidden>
+    <span id="sumText"></span>
+    <button class="btn" id="newCase2" style="margin-left:auto">＋ 案件</button>
+  </div>
+  <div class="list" id="list" hidden></div>
+
+  <div id="boardView">
+  <div class="casebar pad">
+    <div class="fields">
+      <div class="f"><label for="fClient">発注者</label><input id="fClient" placeholder="〇〇市教育委員会"></div>
+      <div class="f"><label for="fLead">案件統括責任者</label><input id="fLead" placeholder="役職名で"></div>
+      <div class="f"><label for="fDue">案件納期</label><input id="fDue" type="date"></div>
+      <div class="f"><label for="fGoal">ゴール・優先事項</label><input id="fGoal" class="wide" placeholder="着手会議で決めたこと"></div>
+      <div class="chips" role="group" aria-label="絞り込み">
+        <button class="chip" data-lane="営業" aria-pressed="false">営業</button>
+        <button class="chip" data-lane="現場" aria-pressed="false">現場</button>
+        <button class="chip" data-lane="整理" aria-pressed="false">整理</button>
+        <button class="chip" data-lane="図化" aria-pressed="false">図化</button>
+        <button class="chip" data-lane="測量" aria-pressed="false">測量</button>
+        <button class="chip" data-lane="全課" aria-pressed="false">全課</button>
+        <button class="chip" id="openOnly" aria-pressed="false">未完了だけ</button>
+      </div>
+    </div>
+    <div class="defs">
+      <span class="lbl">担当者（既定）</span>
+      <div class="d"><span style="color:var(--eigyo)">営業</span><input id="d営業" placeholder="氏名"></div>
+      <div class="d"><span style="color:var(--genba)">現場</span><input id="d現場" placeholder="氏名"></div>
+      <div class="d"><span style="color:var(--soku)">測量</span><input id="d測量" placeholder="氏名"></div>
+      <div class="d"><span style="color:var(--seiri)">整理</span><input id="d整理" placeholder="氏名"></div>
+      <div class="d"><span style="color:var(--zuka)">図化</span><input id="d図化" placeholder="氏名"></div>
+      <span class="hint">入れると各工程の担当者欄に入ります。工程ごとに書き換えれば、その工程だけ残ります。全課の工程には案件統括責任者が入ります。</span>
+    </div>
+  </div>
+
+  <div class="board"><div class="track" id="track"></div></div>
+  </div>
+
+  <footer class="pad">
+    工程の内容は営業課・調査課・測量課から提出された業務フローに記載のもの。★＝決める・渡すための工程（素案）。<br>
+    <b>入力した内容は、このパソコンのブラウザの中にだけ保存されます。</b>共有フォルダにこのファイルを置いても、内容は共有されません。受領確認は入力者による記録で、本人認証付きの承認ではありません。
+    「読み込み」は全案件を置き換えます。「置換前に戻す」で直前の置換を戻せます（このブラウザ内に1世代保存）。<br>
+    他の人に渡すとき、また控えを残すときは「書き出し」でファイルにしてNASに置いてください。
+  </footer>
+</div>
+
+<div class="sheet" id="sheet" hidden>
+  <div class="box">
+    <h2 id="sheetTitle">案件を追加</h2>
+    <p id="sheetDesc">案件名を入れると、工程のボードがこの案件用に用意されます。</p>
+    <div id="sheetForm">
+      <label for="nName">案件名</label>
+      <input id="nName" placeholder="〇〇市　△△遺跡　第1次調査">
+      <label for="nClient">発注者</label>
+      <input id="nClient" placeholder="〇〇市教育委員会">
+    </div>
+    <div class="acts">
+      <button class="btn" id="sheetCancel">やめる</button>
+      <button class="btn primary" id="sheetOk">追加</button>
+    </div>
+  </div>
+</div>
+<div class="toast" id="toast" hidden></div>
+<input type="file" id="fileIn" accept="application/json,.json" hidden>
+
+<script>
+(function(){
+"use strict";
+var L={営業:"eigyo",現場:"genba",整理:"seiri",図化:"zuka",測量:"soku",全課:"all"};
+var ROLES=["営業","現場","測量","整理","図化"];
+var ZUKA=["s25","s26"];   // データの選別／図化（遺構関係）
+var PHASES=["受注・契約","着手準備・計画","現地着手","発掘調査",
+            "現地終了","整理作業","報告書作成","納品"];
+var RAW=[
+ ["s04",1,"営業","受注・契約書作成提出","",0],
+ ["s05",1,"全課","★着手会議","全課が揃い、ゴール・制約・優先順位を共有する",1],
+ ["s06",1,"全課","★引き継ぎ①　営業 → 現地","契約条件・仕様書・工期・請負額・発注者の窓口と経緯",1],
+ ["s07",2,"現場","計画","仕様の確認／編成確認／工程立案",0],
+ ["s08",2,"現場","実施計画書作成・届出・書類提出","",0],
+ ["s09",2,"現場","データ保管場所の確認・確保","",0],
+ ["s10",2,"営業","準備業務","提出書類の作成提出／外注手配／発注者との協議・調整",0],
+ ["s11",2,"測量","基準点測量の準備","基準点・水準点の検索／成果表の出力＆データ化／展開網図・グリッド網図作成",0],
+ ["s12",2,"全課","受け渡し　現場 → 測量","実施計画書・調査範囲・工程／測量の着手日を確定",0],
+ ["s13",3,"測量","基準点測量（杭打ち・位置出し）","器械点の設置／水準点測量／調査範囲観測／グリッド杭打設／成果簿作成",0],
+ ["s14",3,"全課","受け渡し　測量 → 現場","基準点・グリッド杭・成果簿。掘削はこの完了が前提",0],
+ ["s15",3,"現場","準備工","",0],
+ ["s39",3,"現場","表土掘削","",0],
+ ["s16",4,"現場","遺構確認","",0],
+ ["s40",4,"現場","遺構精査","掘削／記録",0],
+ ["s17",4,"測量","遺構測量","対空標識配置・観測／写真データ処理／点群LAS・オルソ画像出力／成果簿作成",0],
+ ["s18",4,"測量","空中写真撮影","離発着場所確認・自動航行コース作成／関係機関への連絡／飛行・確認／オルソ・合成写真作成",0],
+ ["s19",4,"現場","補足調査","掘削／記録",0],
+ ["s41",4,"現場","埋戻","",0],
+ ["s21",5,"現場","撤収・終了確認・終了書類","",0],
+ ["s22",5,"全課","★引き継ぎ②　現地 → 整理","図面・写真・台帳・遺物一式に加えて、現地で何をどう判断したかの経緯",1],
+ ["s23",5,"全課","受け渡し　測量 → 整理","点群LAS・オルソ画像・成果簿",0],
+ ["s24",6,"全課","★整理着手の判断","何が揃ったら整理を開始するか／いつまでに終えるか",1],
+ ["s25",6,"整理","データの選別（要・不要）","",0],
+ ["s26",6,"整理","図化（遺構関係）","スキャン・トレース／モデル生成・図枠作成・トレース／測量データ抽出／土層注記 台帳入力／.ai統合・整合",0],
+ ["s27",6,"整理","記録写真の整理","台帳入力 → リネーム → フォルダ振分",0],
+ ["s28",6,"整理","遺物基礎整理（接合まで）","水洗 → 注記 → 分類 → 計量 → 接合（石膏）",0],
+ ["s42",6,"整理","遺物抽出・チャコ入れ・観察表","抽出（実測台帳）→ チャコ入れ／遺物観察（胎土・色調・調整）→ 観察表入力",0],
+ ["s43",6,"整理","遺物実測","実測 or デジタル／拓本 → .ai統合 → チャコ消し",0],
+ ["s44",6,"整理","遺物写真撮影","",0],
+ ["s29",6,"整理","自然科学分析・保存処理","外注を含む。時間がかかる",0],
+ ["s30",7,"整理","編集（素材づくり）","原稿執筆／遺構図・遺物図・観察表レイアウト／写真切出・調整／図表作成／外部原稿発注",0],
+ ["s31",7,"整理","インデザイン編集","目次／挿図番号",0],
+ ["s32",7,"整理","校正","",0],
+ ["s33",7,"整理","入稿・印刷","",0],
+ ["s34",8,"全課","★引き継ぎ③　整理 → 営業","納品物一式・完了報告",1],
+ ["s35",8,"整理","本納品","データ／図面／台帳／遺物　＋　報告書",0],
+ ["s36",8,"営業","納品書類・請求・入金確認","納品書類の作成提出／請求／入金確認／領収書の発行",0]
+];
+var STEPS=RAW.map(function(r){return {id:r[0],phase:r[1],lane:r[2],
+  role:(ZUKA.indexOf(r[0])>=0?"図化":r[2]),title:r[3],detail:r[4],star:!!r[5],note:false};});
+var TRACKABLE=STEPS.filter(function(s){return !s.note;}).length;
+var STATUSES=["未着手","着手","完了","保留","—"];
+var KEY="flowboard.v1";
+
+var state={schemaVersion:2,cases:[],cur:null,prog:{}};   // prog[caseId][stepId] = {status,assignee,at}
+var filters={lanes:{},openOnly:false}, sheetMode="new", sheetOnOk=null, view="list";
+
+function $(id){return document.getElementById(id);}
+function esc(s){return String(s==null?"":s).replace(/[&<>"]/g,function(c){
+  return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c];});}
+function today(){var d=new Date();return d.getFullYear()+"/"+String(d.getMonth()+1).padStart(2,"0")+"/"+String(d.getDate()).padStart(2,"0");}
+function toast(m){var t=$("toast");t.textContent=m;t.hidden=false;clearTimeout(toast._t);
+  toast._t=setTimeout(function(){t.hidden=true;},2200);}
+
+var BACKUP_KEY=KEY+".beforeReplace", loadBlocked=false;
+function storageStatus(message,failed){
+  $("saveStatus").textContent=message;
+  $("saveStatus").style.background=failed?"var(--stop-bg)":"var(--panel-2)";
+}
+function dateValue(v,label){
+  if(v===undefined||v==="")return "";
+  if(typeof v!=="string"||!/^\d{4}-\d{2}-\d{2}$/.test(v))throw Error(label+"の日付形式が不正です");
+  var d=new Date(v+"T00:00:00Z");
+  if(!Number.isFinite(d.getTime())||d.toISOString().slice(0,10)!==v)throw Error(label+"の日付が不正です");return v;
+}
+function isHandoff(s){return /引き継ぎ|受け渡し/.test(s.title);}
+function overdue(st){return !!st.dueDate&&st.dueDate<today().replace(/\//g,"-")&&st.status!=="完了"&&st.status!=="—";}
+function attention(cid){
+  var holds=0,late=0,unreceived=0;
+  STEPS.forEach(function(s){var p=statOf(cid,s.id);if(p.status==="保留")holds++;if(overdue(p))late++;
+    if(isHandoff(s)&&p.status==="完了"&&!(p.receivedBy&&p.receivedBy.trim()&&p.receivedAt))unreceived++;
+  });return {holds:holds,late:late,unreceived:unreceived};
+}
+function validateState(o){
+  function obj(v){return v!==null&&typeof v==="object"&&!Array.isArray(v);}
+  function str(v,label){if(v!==undefined&&typeof v!=="string")throw Error(label+"が文字列ではありません");return v||"";}
+  function safeId(v){return typeof v==="string"&&/^[A-Za-z0-9_-]+$/.test(v)&&!["__proto__","constructor","prototype"].includes(v);}
+  if(!obj(o)||!Array.isArray(o.cases))throw Error("案件一覧の形式が正しくありません");
+  if(o.schemaVersion!==undefined&&o.schemaVersion!==1&&o.schemaVersion!==2)throw Error("未対応のデータ形式です");
+  var ids=new Set(),result={schemaVersion:2,cases:[],cur:null,prog:{}};
+  o.cases.forEach(function(c){
+    if(!obj(c)||!safeId(c.id)||ids.has(c.id))throw Error("案件IDが不正または重複しています");
+    ids.add(c.id);
+    var item={id:c.id,name:str(c.name,"案件名"),client:str(c.client,"発注者"),lead:str(c.lead,"統括"),goal:str(c.goal,"ゴール"),createdAt:str(c.createdAt,"作成日"),dueDate:dateValue(c.dueDate,"案件納期"),def:{}};
+    if(c.def!==undefined&&!obj(c.def))throw Error("既定担当者の形式が不正です");
+    ROLES.forEach(function(r){item.def[r]=str(c.def&&c.def[r],"既定担当者");});
+    result.cases.push(item);
+  });
+  if(o.prog!==undefined&&!obj(o.prog))throw Error("進捗の形式が不正です");
+  Object.keys(o.prog||{}).forEach(function(cid){
+    if(!ids.has(cid)||!obj(o.prog[cid]))throw Error("進捗の案件IDまたは形式が不正です");
+    result.prog[cid]={};
+    Object.keys(o.prog[cid]).forEach(function(sid){
+      // 旧版で削除された工程IDも、再書き出しで失われないよう保持する。
+      if(!/^s[0-9]+$/.test(sid))throw Error("工程IDが不正です");
+      var p=o.prog[cid][sid];
+      if(!obj(p)||STATUSES.indexOf(p.status)<0)throw Error("工程の状況が不正です");
+      result.prog[cid][sid]={status:p.status,assignee:str(p.assignee,"担当者"),at:str(p.at,"更新日"),dueDate:dateValue(p.dueDate,"工程期限"),holdReason:str(p.holdReason,"保留理由"),handoffLocation:str(p.handoffLocation,"保管先"),handoffNote:str(p.handoffNote,"申し送り"),missingItems:str(p.missingItems,"不足資料"),receivedBy:str(p.receivedBy,"受領者"),receivedAt:dateValue(p.receivedAt,"受領日")};
+    });
+  });
+  if(o.cur!==undefined&&o.cur!==null&&o.cur!==""&&!ids.has(o.cur))throw Error("選択中の案件IDが存在しません");
+  result.cur=o.cur||(result.cases[0]?result.cases[0].id:null);
+  return result;
+}
+function load(){
+  try{
+    var raw=localStorage.getItem(KEY);
+    if(raw)state=validateState(JSON.parse(raw));
+    storageStatus("このブラウザに保存済み",false);
+  }catch(e){loadBlocked=true;storageStatus("保存データを読み込めません。既存データの上書きを停止しています。JSONを読み込んで復旧してください。",true);}
+}
+function save(){
+  if(loadBlocked){storageStatus("既存データの保護のため保存を停止中です。現在の入力は「書き出し」で控えを残してください。",true);return false;}
+  try{localStorage.setItem(KEY,JSON.stringify(state));storageStatus("このブラウザに保存済み",false);return true;}
+  catch(e){storageStatus("保存失敗：現在の入力は保存されていません。「書き出し」で控えを残してください。",true);return false;}
+}
+function replaceState(next){
+  // 検証済みデータだけを渡す。バックアップが保存できない場合は置換しない。
+  try{
+    var before=loadBlocked?localStorage.getItem(KEY):JSON.stringify(state);
+    localStorage.setItem(BACKUP_KEY,JSON.stringify({savedAt:new Date().toISOString(),data:before}));
+    localStorage.setItem(KEY,JSON.stringify(next));
+  }catch(e){storageStatus("置換を中止しました。バックアップまたはデータを保存できません。現在の内容を書き出してください。",true);return false;}
+  state=next;loadBlocked=false;view="list";renderAll();storageStatus("このブラウザに保存済み。置換前の内容は「置換前に戻す」で復元できます。",false);return true;
+}
+function curCase(){for(var i=0;i<state.cases.length;i++) if(state.cases[i].id===state.cur) return state.cases[i]; return null;}
+function P(){ if(!state.prog[state.cur]) state.prog[state.cur]={}; return state.prog[state.cur]; }
+function stateOf(sid){ var p=state.cur?(state.prog[state.cur]||{}):{}; return p[sid]||{status:"未着手",assignee:"",at:""}; }
+
+function progOf(cid){ return state.prog[cid]||{}; }
+function statOf(cid,sid){ var p=progOf(cid); return p[sid]||{status:"未着手",assignee:"",at:""}; }
+function caseStats(cid){
+  var done=0,total=0,byPhase={},cur=null,last="";
+  for(var i=1;i<=PHASES.length;i++) byPhase[i]={d:0,t:0};
+  STEPS.forEach(function(s){
+    var st=statOf(cid,s.id);
+    if(st.at&&st.at>last) last=st.at;
+    if(st.status==="—") return;
+    total++; byPhase[s.phase].t++;
+    if(st.status==="完了"){done++;byPhase[s.phase].d++;}
+    else if(cur===null) cur=s.phase;
+  });
+  return {done:done,total:total,byPhase:byPhase,cur:cur,last:last,
+          pct: total?Math.round(done/total*1000)/10:0};
+}
+
+function counts(){var d=0,t=0;STEPS.forEach(function(s){
+  if(s.note)return; var st=stateOf(s.id).status; if(st==="—")return; t++; if(st==="完了")d++;});
+  return {done:d,total:t};}
+function renderMeter(){var c=counts(),p=c.total?Math.round(c.done/c.total*1000)/10:0;
+  $("bar").style.width=p+"%";$("pct").textContent=(Number.isInteger(p)?p:p.toFixed(1))+"%";
+  $("cnt").textContent=c.done+" / "+c.total;}
+
+function renderCases(){
+  var sel=$("caseSel");
+  sel.innerHTML=state.cases.length?state.cases.map(function(c){
+    return '<option value="'+esc(c.id)+'">'+esc(c.name||"（名称未設定）")+'</option>';}).join("")
+    :'<option value="">案件がありません</option>';
+  if(state.cur) sel.value=state.cur;
+  var c=curCase();
+  $("fClient").value=c&&c.client?c.client:"";
+  $("fDue").value=c&&c.dueDate?c.dueDate:"";
+  $("fLead").value=c&&c.lead?c.lead:"";
+  $("fGoal").value=c&&c.goal?c.goal:"";
+  ["fClient","fLead","fGoal","fDue"].forEach(function(id){$(id).disabled=!c;});
+  ROLES.forEach(function(r){
+    var el=$("d"+r); if(!el) return;
+    el.value = c && c.def && c.def[r] ? c.def[r] : "";
+    el.disabled = !c;
+  });
+  $("delCase").disabled=!c;
+}
+
+function visible(s){
+  var any=Object.keys(filters.lanes).some(function(k){return filters.lanes[k];});
+  if(any&&!filters.lanes[s.role]) return false;
+  if(filters.openOnly&&!s.note&&stateOf(s.id).status==="完了") return false;
+  return true;
+}
+
+function extraFields(s,st){
+  function field(key,label,type){var id="step-"+s.id+"-"+key;
+    var attrs=' id="'+id+'" data-step="'+s.id+'" data-field="'+key+'"';
+    return '<label for="'+id+'">'+label+(type==="textarea"?'<textarea'+attrs+'>'+esc(st[key]||"")+'</textarea>':'<input type="'+(type||"text")+'"'+attrs+' value="'+esc(st[key]||"")+'">')+'</label>';
+  }
+  var out='<div class="step-fields">'+field("dueDate","工程期限","date");
+  if(st.status==="保留"||st.holdReason)out+=field("holdReason","保留理由・再開条件","textarea");
+  if(isHandoff(s))out+='<details><summary>引き継ぎ記録・受領確認</summary>'+field("handoffLocation","資料の保管先（NASパスなど）")+field("missingItems","不足資料","textarea")+field("handoffNote","申し送り","textarea")+field("receivedBy","受領者")+field("receivedAt","受領日","date")+'</details>';
+  return out+'</div>';
+}
+function stepNotice(s,st){
+  var notices=[];if(overdue(st))notices.push("工程期限を超過");
+  if(st.status==="保留"&&!(st.holdReason||"").trim())notices.push("保留理由を入力してください");
+  if(isHandoff(s)&&st.status!=="—"){
+    if(st.receivedBy&&st.receivedBy.trim()&&st.receivedAt)notices.push("受領記録あり");
+    else if(st.status==="完了"||st.status==="着手")notices.push("受領記録なし");
+  }
+  return esc(notices.join(" ／ "));
+}
+function cardHtml(s){
+  var st=stateOf(s.id);
+  if(s.note) return '<article class="card memo-note lane-'+L[s.role]+'"><div class="ttl">'+esc(s.title)+'</div>'+
+    (s.detail?'<div class="det">'+esc(s.detail)+'</div>':'')+'</article>';
+  var cls="card lane-"+L[s.role]+(s.star?" star":"");
+  if(st.status==="完了")cls+=" s-done";else if(st.status==="着手")cls+=" s-doing";
+  else if(st.status==="保留")cls+=" s-hold";else if(st.status==="—")cls+=" s-na";
+  var seg=STATUSES.map(function(x){return '<button type="button" data-s="'+x+'" data-step="'+s.id+
+    '" aria-pressed="'+(st.status===x?"true":"false")+'">'+x+'</button>';}).join("");
+  return '<article class="'+cls+'">'+
+    '<div class="lane">'+esc(s.role)+'</div><div class="ttl">'+esc(s.title)+'</div>'+
+    (s.detail?'<div class="det">'+esc(s.detail)+'</div>':'')+
+    '<div class="row"><input type="text" placeholder="担当者" value="'+esc(st.assignee)+'" data-step="'+s.id+'"></div>'+
+    '<div class="seg">'+seg+'</div>'+
+    '<div class="notice" data-notice="'+s.id+'">'+stepNotice(s,st)+'</div>'+extraFields(s,st)+
+    (st.at?'<div class="stamp">更新 '+esc(st.at)+'</div>':'')+'</article>';
+}
+
+function renderBoard(){
+  var t=$("track");
+  if(!state.cur){t.innerHTML='<div class="empty"><b>案件がまだありません</b>「＋ 案件」で案件名を登録すると、'+STEPS.length+'工程のボードが用意されます。</div>';return;}
+  var h="";
+  for(var p=1;p<=PHASES.length;p++){
+    var list=STEPS.filter(function(s){return s.phase===p;});
+    var tr=list.filter(function(s){return !s.note&&stateOf(s.id).status!=="—";});
+    var dn=tr.filter(function(s){return stateOf(s.id).status==="完了";}).length;
+    h+='<section class="col'+(list.length>6?' wide':'')+'"><div class="colhead">'+
+       '<span class="n">PHASE '+p+'</span><span class="cn">'+dn+' / '+tr.length+'</span><b>'+esc(PHASES[p-1])+
+       '</b><div class="cbar"><i style="width:'+(tr.length?dn/tr.length*100:0)+'%"></i></div></div><div class="cards">';
+    list.filter(visible).forEach(function(s){h+=cardHtml(s);});
+    h+='</div></section>';
+  }
+  t.innerHTML=h;
+}
+function renderList(){
+    var el=$("list");
+    if(!state.cases.length){
+      el.innerHTML='<div class="emptyList"><b>案件がまだありません</b>「＋ 案件」で登録すると、ここに並びます。</div>';
+      $("sumText").innerHTML=""; return;
+    }
+    var run=0,fin=0,rows="";
+    state.cases.forEach(function(c){
+      var t=caseStats(c.id);
+      if(t.total&&t.done===t.total)fin++;else run++;
+      var cells="";
+      for(var i=1;i<=PHASES.length;i++){
+        var b=t.byPhase[i], w=b.t?b.d/b.t*100:0;
+        var cls="gcell"+(b.t===0?" na":"")+(b.t&&b.d===b.t?" full":"")+(t.cur===i?" cur":"");
+        cells+='<div class="'+cls+'" title="'+esc(PHASES[i-1])+'　'+b.d+' / '+b.t+'">'+
+               '<i style="width:'+w+'%"></i><u>'+(b.t?b.d+"/"+b.t:"—")+'</u></div>';
+      }
+      var sub=[],a=attention(c.id);
+      if(c.dueDate)sub.push("納期 "+esc(c.dueDate)+(c.dueDate<today().replace(/\//g,"-")&&t.done<t.total?"（超過）":""));
+      if(c.client)sub.push(esc(c.client));
+      sub.push(c.lead?"統括 "+esc(c.lead):"統括 未定");
+      if(t.last)sub.push("更新 "+esc(t.last));
+      sub.push("保留 "+a.holds+"件／工程期限超過 "+a.late+"件");
+      if(a.unreceived)sub.push("完了済・受領未記録 "+a.unreceived+"件");
+      rows+='<button class="gline" data-open="'+esc(c.id)+'">'+
+        '<div class="gname"><b>'+esc(c.name||"（名称未設定）")+'</b><span>'+sub.join("　・　")+'</span></div>'+
+        cells+
+        '<div class="gpct"><b>'+(Number.isInteger(t.pct)?t.pct:t.pct.toFixed(1))+'%</b>'+
+        '<span>'+t.done+' / '+t.total+'</span></div></button>';
+    });
+    var head='<div class="ghead"><div>案件</div>';
+    for(var i=1;i<=PHASES.length;i++) head+='<div><em>'+i+'</em>'+esc(PHASES[i-1])+'</div>';
+    head+='<div>進捗</div></div>';
+    el.innerHTML='<div class="gwrap">'+head+rows+
+      '<div class="glegend"><span><i style="background:var(--ok)"></i>完了した工程</span>'+
+      '<span><i style="background:var(--panel-3)"></i>未完了</span>'+
+      '<span><i style="background:repeating-linear-gradient(45deg,var(--panel-3) 0 3px,transparent 3px 6px)"></i>対象外</span>'+
+      '<span><i style="box-shadow:0 0 0 2px var(--accent);background:transparent"></i>いま進んでいる段階</span></div></div>';
+    $("sumText").innerHTML='<span>案件 <b>'+state.cases.length+'</b></span>'+
+      '<span>進行中 <b>'+run+'</b></span><span>完了 <b>'+fin+'</b></span>';
+
+}
+
+function renderAll(){
+  var isList = (view==="list");
+  $("list").hidden=!isList; $("sum").hidden=!isList;
+  $("boardView").hidden=isList;
+  $("toList").hidden=isList; $("meter").hidden=isList;
+  $("caseSel").closest(".grow").hidden=isList;
+  if(isList){ renderList(); return; }
+  renderCases();renderMeter();renderBoard();
+}
+
+function applyDefault(role, val, prev){
+  var p=P(), changed=false;
+  STEPS.forEach(function(s){
+    if(s.note) return;
+    var target = (role==="__lead__") ? (s.role==="全課") : (s.role===role);
+    if(!target) return;
+    var cur = p[s.id] ? (p[s.id].assignee||"") : "";
+    if(cur==="" || cur===(prev||"\u0000")){
+      var st = p[s.id] || {status:"未着手",assignee:"",at:""};
+      p[s.id] = Object.assign({},st,{assignee:val});
+      changed=true;
+    }
+  });
+  if(changed){ save(); renderBoard(); }
+}
+
+function setStep(sid,patch){
+  var cur=stateOf(sid),p=P();
+  p[sid]=Object.assign({},cur,patch,{at:today()});
+  save();renderMeter();
+}
+
+/* events */
+$("track").addEventListener("click",function(e){
+  var b=e.target.closest("button[data-s]");if(!b)return;
+  var sid=b.getAttribute("data-step"),v=b.getAttribute("data-s");
+  if(stateOf(sid).status===v)return;
+  setStep(sid,{status:v});renderBoard();
+});
+// 入力イベント内で反映・保存し、案件切り替えや書き出し時の取りこぼしを防ぐ。
+$("track").addEventListener("input",function(e){
+  var i=e.target.closest("input[data-step],textarea[data-step]");if(!i||!curCase())return;
+  var sid=i.getAttribute("data-step"),key=i.getAttribute("data-field")||"assignee";
+  if(["assignee","dueDate","holdReason","handoffLocation","handoffNote","missingItems","receivedBy","receivedAt"].indexOf(key)<0)return;
+  var patch={};patch[key]=i.value;setStep(sid,patch);
+  var s=STEPS.find(function(s){return s.id===sid;});
+  var notice=$("track").querySelector('[data-notice="'+sid+'"]');if(notice)notice.innerHTML=stepNotice(s,stateOf(sid));
+});
+["fClient","fLead","fGoal","fDue"].forEach(function(id){
+  $(id).addEventListener("input",function(){
+    var c=curCase();if(!c)return;
+    var prev=c.lead||"",v=$(id).value;
+    c[id==="fClient"?"client":id==="fLead"?"lead":id==="fDue"?"dueDate":"goal"]=v;
+    save();if(id==="fLead")applyDefault("__lead__",v,prev);
+  });
+});
+ROLES.forEach(function(r){
+  $("d"+r).addEventListener("input",function(){
+    var c=curCase();if(!c)return;
+    if(!c.def)c.def={};
+    var prev=c.def[r]||"",v=$("d"+r).value;
+    c.def[r]=v;save();applyDefault(r,v,prev);
+  });
+});
+
+$("caseSel").addEventListener("change",function(){
+  state.cur=$("caseSel").value||null;save();renderAll();});
+document.querySelectorAll(".chip[data-lane]").forEach(function(ch){
+  ch.addEventListener("click",function(){var l=ch.getAttribute("data-lane");
+    filters.lanes[l]=!filters.lanes[l];ch.setAttribute("aria-pressed",filters.lanes[l]?"true":"false");renderBoard();});});
+$("openOnly").addEventListener("click",function(){filters.openOnly=!filters.openOnly;
+  $("openOnly").setAttribute("aria-pressed",filters.openOnly?"true":"false");renderBoard();});
+
+function openSheet(mode,opts){
+  sheetMode=mode;opts=opts||{};sheetOnOk=opts.onOk||null;
+  if(mode==="del"){
+    var c=curCase();
+    $("sheetTitle").textContent="この案件を削除しますか";
+    $("sheetDesc").textContent="「"+(c?c.name:"")+"」の進捗もいっしょに消えます。元に戻せません。";
+    $("sheetForm").hidden=true;$("sheetOk").textContent="削除する";
+  }else if(mode==="new"){
+    $("sheetTitle").textContent="案件を追加";
+    $("sheetDesc").textContent="案件名を入れると、"+STEPS.length+"工程のボードがこの案件用に用意されます。";
+    $("sheetForm").hidden=false;$("sheetOk").textContent="追加";
+    $("nName").value="";$("nClient").value="";
+  }else{
+    $("sheetTitle").textContent=opts.title||"確認";
+    $("sheetDesc").textContent=opts.desc||"";
+    $("sheetForm").hidden=true;$("sheetOk").textContent=opts.ok||"実行する";
+  }
+  $("sheet").hidden=false;
+  if(mode==="new")$("nName").focus();else $("sheetOk").focus();
+}
+$("list").addEventListener("click",function(e){
+  var b=e.target.closest("[data-open]");if(!b)return;
+  state.cur=b.getAttribute("data-open");view="board";save();renderAll();
+  window.scrollTo(0,0);
+});
+$("toList").addEventListener("click",function(){view="list";renderAll();window.scrollTo(0,0);});
+["newCase","newCase2"].forEach(function(i){$(i).addEventListener("click",function(){openSheet("new");});});
+$("delCase").addEventListener("click",function(){if(curCase())openSheet("del");});
+$("sheetCancel").addEventListener("click",function(){$("sheet").hidden=true;});
+$("sheet").addEventListener("click",function(e){if(e.target===$("sheet"))$("sheet").hidden=true;});
+$("sheetOk").addEventListener("click",function(){
+  if(sheetMode==="confirm"){
+    var fn=sheetOnOk;sheetOnOk=null;$("sheet").hidden=true;if(fn)fn();return;
+  }
+  if(sheetMode==="del"){
+    var id=state.cur;
+    state.cases=state.cases.filter(function(c){return c.id!==id;});
+    delete state.prog[id];
+    state.cur=state.cases[0]?state.cases[0].id:null;
+    view="list";save();$("sheet").hidden=true;renderAll();toast("削除しました");return;
+  }
+  var n=$("nName").value.trim();if(!n){$("nName").focus();return;}
+  var id="c"+Date.now().toString(36);
+  state.cases.unshift({id:id,name:n,client:$("nClient").value.trim(),lead:"",goal:"",
+                       def:{営業:"",現場:"",測量:"",整理:"",図化:""},createdAt:today()});
+  state.prog[id]={};state.cur=id;view="board";save();$("sheet").hidden=true;renderAll();
+});
+$("nName").addEventListener("keydown",function(e){if(e.key==="Enter")$("sheetOk").click();});
+
+/* 書き出し / 読み込み */
+function dl(name,text,type){
+  var b=new Blob([text],{type:type||"application/json"});
+  var u=URL.createObjectURL(b),a=document.createElement("a");
+  a.href=u;a.download=name;document.body.appendChild(a);a.click();
+  setTimeout(function(){URL.revokeObjectURL(u);a.remove();},0);
+}
+$("expJson").addEventListener("click",function(){
+  dl("業務フロー進捗_"+today().replace(/\//g,"")+".json",JSON.stringify(state,null,1));
+  toast("書き出しました。NASに置いてください");
+});
+$("impJson").addEventListener("click",function(){$("fileIn").click();});
+$("fileIn").addEventListener("change",function(){
+  var f=$("fileIn").files[0];if(!f)return;
+  var r=new FileReader();
+  r.onload=function(){
+    try{
+      var next=validateState(JSON.parse(r.result));
+      openSheet("confirm",{title:"全案件を置き換えます",
+        desc:"いまの"+state.cases.length+"案件を、読み込むファイルの"+next.cases.length+"案件に置き換えます。追加や統合ではありません。置換前の内容はこのブラウザに1世代だけ残ります。",
+        ok:"置き換える",onOk:function(){ if(replaceState(next))toast("読み込みました"); }});
+    }catch(e){toast("読み込めませんでした。データは変更していません");storageStatus("読み込みを中止しました："+e.message,true);}
+    $("fileIn").value="";
+  };
+  r.onerror=function(){toast("ファイルを読み取れませんでした。データは変更していません");$("fileIn").value="";};
+  r.readAsText(f);
+});
+$("restoreBackup").addEventListener("click",function(){
+  var next,backup;
+  try{
+    var raw=localStorage.getItem(BACKUP_KEY);
+    if(!raw){toast("置換前の控えはありません");return;}
+    backup=JSON.parse(raw);next=validateState(JSON.parse(backup.data));
+  }catch(e){toast("控えを復元できません。データは変更していません");return;}
+  openSheet("confirm",{title:"置換前の内容に戻します",
+    desc:"いまの"+state.cases.length+"案件を、置換前の"+next.cases.length+"案件に戻します。控えの日時："+backup.savedAt+"。",
+    ok:"戻す",onOk:function(){ if(replaceState(next))toast("置換前の内容を復元しました"); }});
+});
+$("expCsv").addEventListener("click",function(){
+  var c=curCase();if(!c){toast("案件を選んでください");return;}
+  var rows=[["案件名","発注者","段階No","段階名","区分","工程","内容","担当者","状況","更新日","案件納期","工程期限","保留理由・再開条件","資料保管先","不足資料","申し送り","受領者","受領日"]];
+  STEPS.forEach(function(s){
+    if(s.note)return;var st=stateOf(s.id);
+    rows.push([c.name,c.client||"",s.phase,PHASES[s.phase-1],s.role,s.title,s.detail,
+               st.assignee||"",st.status,st.at||"",c.dueDate||"",st.dueDate||"",st.holdReason||"",st.handoffLocation||"",st.missingItems||"",st.handoffNote||"",st.receivedBy||"",st.receivedAt||""]);
+  });
+  var csv=rows.map(function(r){return r.map(function(v){
+    return '"'+String(v).replace(/"/g,'""')+'"';}).join(",");}).join("\r\n");
+  dl("進捗_"+(c.name||"案件").replace(/[\\\/:*?"<>|]/g,"")+".csv","﻿"+csv,"text/csv");
+  toast("CSVを書き出しました。Excelで開けます");
+});
+$("doPrint").addEventListener("click",function(){window.print();});
+
+load();renderAll();
+})();
+</script>
+</body>
+</html>
